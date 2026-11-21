@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency, convertCurrency } from '../lib/currencies';
 import { StatCard } from '../components/ui/StatCard';
 import { Card } from '../components/ui/Card';
@@ -36,6 +37,7 @@ import {
 } from 'recharts';
 
 export const DashboardPage: React.FC = () => {
+  const { user } = useAuth();
   const {
     totalBalance,
     monthlyIncome,
@@ -102,7 +104,7 @@ export const DashboardPage: React.FC = () => {
             Financial Dashboard
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Displaying real-time balance in primary currency:{' '}
+            Welcome back, <span className="font-bold text-primary">{user?.fullName || 'User'}</span> · Real-time balance in{' '}
             <span className="font-bold text-primary">{primaryCurrency}</span>
           </p>
         </div>

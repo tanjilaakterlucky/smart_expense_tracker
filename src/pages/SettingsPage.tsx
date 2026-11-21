@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -52,6 +52,16 @@ export const SettingsPage: React.FC = () => {
   const [country, setCountry] = useState(user?.country || 'Bangladesh');
   const [timezone, setTimezone] = useState(user?.timezone || 'Asia/Dhaka');
   const [profileSaved, setProfileSaved] = useState(false);
+
+  // Sync state with loaded user profile
+  useEffect(() => {
+    if (user) {
+      if (user.fullName) setFullName(user.fullName);
+      if (user.phone) setPhone(user.phone);
+      if (user.country) setCountry(user.country);
+      if (user.timezone) setTimezone(user.timezone);
+    }
+  }, [user]);
 
   // Password change state
   const [newPassword, setNewPassword] = useState('');

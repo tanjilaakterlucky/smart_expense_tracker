@@ -315,8 +315,8 @@ export const INITIAL_NOTIFICATIONS: AppNotification[] = [
 
 export const INITIAL_USER: UserProfile = {
   id: 'usr-finora-01',
-  email: 'finora.user@finora.io',
-  fullName: 'Tanzim Ahmed',
+  email: 'user@finora.io',
+  fullName: 'User',
   primaryCurrency: 'BDT',
   theme: 'light',
   isDemoUser: true,
