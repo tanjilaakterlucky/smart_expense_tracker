@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { LegalModal } from '../components/legal/LegalModal';
 
 export const AuthPage: React.FC = () => {
-  const { loginDemoUser, isSupabaseConnected } = useAuth();
+  const { loginDemoUser, updateProfile, isSupabaseConnected } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
@@ -76,9 +76,11 @@ export const AuthPage: React.FC = () => {
 
     setLoading(true);
 
+    const trimmedName = fullName.trim() || 'User';
+
     if (!isSupabaseConnected || !supabase) {
       // Local/Demo Mode fallback if Supabase is not configured yet
-      loginDemoUser();
+      loginDemoUser(trimmedName, email.trim());
       navigate('/');
       setLoading(false);
       return;
@@ -94,17 +96,33 @@ export const AuthPage: React.FC = () => {
           email,
           password,
           options: {
-            data: { full_name: fullName, primary_currency: 'BDT' },
+            data: { full_name: trimmedName, name: trimmedName, primary_currency: 'BDT' },
             emailRedirectTo: window.location.origin,
           },
         });
         if (error) throw error;
 
+        // Upsert directly to profiles table to guarantee instant database persistence
+        if (data.user) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              email: email,
+              full_name: trimmedName,
+              primary_currency: 'BDT',
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'id' });
+          } catch (upsertErr) {
+            console.warn('Could not pre-populate profile row:', upsertErr);
+          }
+        }
+
         if (data.session) {
+          await updateProfile({ fullName: trimmedName });
           navigate('/');
         } else {
           setMessage({
-            text: 'Registration successful! Verification link sent to your email. Please check your inbox.',
+            text: `Account created for ${trimmedName}! Please check your email to verify before signing in.`,
             isError: false,
           });
         }

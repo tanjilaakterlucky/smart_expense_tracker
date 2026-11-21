@@ -6,7 +6,7 @@ import { supabase, getSupabaseCredentials } from '../lib/supabase';
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  loginDemoUser: () => void;
+  loginDemoUser: (customName?: string, customEmail?: string) => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   changePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -131,8 +131,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isConfigured, fetchAndConstructUserProfile]);
 
-  const loginDemoUser = () => {
-    const demoUser = { ...INITIAL_USER, fullName: 'User', isDemoUser: true };
+  const loginDemoUser = (customName?: string, customEmail?: string) => {
+    const chosenName = (customName && customName.trim()) || 'User';
+    const demoUser: UserProfile = {
+      ...INITIAL_USER,
+      fullName: chosenName,
+      email: customEmail || (user?.email || INITIAL_USER.email),
+      isDemoUser: true,
+    };
     setUser(demoUser);
     storage.set('user_profile', demoUser);
   };
