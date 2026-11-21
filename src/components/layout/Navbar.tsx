@@ -6,7 +6,8 @@ import {
   Plus,
   Globe,
   Bell,
-  ArrowRightLeft,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -15,15 +16,21 @@ import { SUPPORTED_CURRENCIES } from '../../lib/currencies';
 import { CurrencyCode } from '../../types';
 import { Button } from '../ui/Button';
 import { TransactionModal } from '../transactions/TransactionModal';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export const Navbar: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) => {
   const { primaryCurrency, setPrimaryCurrency, notifications } = useFinance();
   const { theme, toggleTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/auth');
+  };
 
   return (
     <>
@@ -46,8 +53,8 @@ export const Navbar: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
           </div>
         </div>
 
-        {/* Right Side: Currency Selector, Theme Toggle, Notifications, Quick Add */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        {/* Right Side: Currency Selector, Theme Toggle, Notifications, Quick Add, Logout */}
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Currency Switcher */}
           <div className="relative flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl px-2.5 py-1.5 border border-slate-200/60 dark:border-slate-700">
             <Globe className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
@@ -95,6 +102,15 @@ export const Navbar: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
             <span className="hidden sm:inline">Add Transaction</span>
             <span className="sm:hidden">Add</span>
           </Button>
+
+          {/* Sign Out Button */}
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </header>
 

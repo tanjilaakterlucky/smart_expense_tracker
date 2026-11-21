@@ -17,19 +17,26 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Default to null so new or unauthenticated users always land on Login / Sign Up first!
   const [user, setUser] = useState<UserProfile | null>(() => {
-    return storage.get<UserProfile>('user_profile', INITIAL_USER);
+    const saved = storage.get<UserProfile | null>('user_profile', null);
+    // If it was previous auto-seeded demo user, do not auto-login; show Auth screen first
+    if (saved && !saved.isDemoUser) {
+      return saved;
+    }
+    return null;
   });
+
   const [loading, setLoading] = useState<boolean>(true);
   const { isConfigured } = getSupabaseCredentials();
 
   useEffect(() => {
     if (isConfigured && supabase) {
-      // Check existing session
+      // Check existing Supabase session
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           const meta = session.user.user_metadata || {};
-          setUser({
+          const activeUser: UserProfile = {
             id: session.user.id,
             email: session.user.email || 'user@finora.io',
             fullName: meta.full_name || 'Finora User',
@@ -42,7 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: 'user',
             isDemoUser: false,
             createdAt: session.user.created_at,
-          });
+          };
+          setUser(activeUser);
+          storage.set('user_profile', activeUser);
         }
         setLoading(false);
       });
@@ -50,7 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
           const meta = session.user.user_metadata || {};
-          setUser({
+          const activeUser: UserProfile = {
             id: session.user.id,
             email: session.user.email || 'user@finora.io',
             fullName: meta.full_name || 'Finora User',
@@ -63,9 +72,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: 'user',
             isDemoUser: false,
             createdAt: session.user.created_at,
-          });
+          };
+          setUser(activeUser);
+          storage.set('user_profile', activeUser);
         } else if (_event === 'SIGNED_OUT') {
           setUser(null);
+          storage.set('user_profile', null);
         }
       });
 
@@ -78,8 +90,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isConfigured]);
 
   const loginDemoUser = () => {
-    setUser(INITIAL_USER);
-    storage.set('user_profile', INITIAL_USER);
+    const demoUser = { ...INITIAL_USER, isDemoUser: true };
+    setUser(demoUser);
+    storage.set('user_profile', demoUser);
   };
 
   const logout = async () => {
@@ -140,25 +153,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     }
-    // Demo mode success simulation
     return { success: true };
   };
 
   const deleteAccount = async (): Promise<{ success: boolean; error?: string }> => {
     if (supabase && isConfigured && user && !user.isDemoUser) {
       try {
-        // Log audit log before removal
         await supabase.from('audit_logs').insert({
           user_id: user.id,
           action: 'account_delete_requested',
         });
-        // Call Supabase RPC or sign out
         await supabase.auth.signOut();
       } catch (e: any) {
         console.error('Error deleting account:', e);
       }
     }
-    // Clear local storage and state
     storage.clear();
     setUser(null);
     return { success: true };
