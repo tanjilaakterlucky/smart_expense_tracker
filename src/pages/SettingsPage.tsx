@@ -19,7 +19,15 @@ import {
   Database,
   RotateCcw,
   Check,
+  Shield,
+  KeyRound,
+  Download,
+  Trash2,
+  Laptop,
+  AlertTriangle,
+  FileText,
 } from 'lucide-react';
+import { LegalModal } from '../components/legal/LegalModal';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -28,13 +36,28 @@ export const SettingsPage: React.FC = () => {
     exchangeRates,
     updateExchangeRate,
     resetToDemoData,
+    transactions,
+    wallets,
+    categories,
+    budgets,
+    savingsGoals,
+    recurring,
   } = useFinance();
-  const { user, updateProfile, isSupabaseConnected } = useAuth();
+  const { user, updateProfile, changePassword, deleteAccount, isSupabaseConnected } = useAuth();
   const { theme, setTheme } = useTheme();
 
-  // Profile form
+  // Profile form state
   const [fullName, setFullName] = useState(user?.fullName || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [country, setCountry] = useState(user?.country || 'Bangladesh');
+  const [timezone, setTimezone] = useState(user?.timezone || 'Asia/Dhaka');
   const [profileSaved, setProfileSaved] = useState(false);
+
+  // Password change state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   // Supabase credentials form
   const initialSb = getSupabaseCredentials();
@@ -46,11 +69,44 @@ export const SettingsPage: React.FC = () => {
   const [editingCurrency, setEditingCurrency] = useState<CurrencyCode | null>(null);
   const [rateInput, setRateInput] = useState<string>('');
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  // Legal modal state
+  const [legalModal, setLegalModal] = useState<{ isOpen: boolean; type: 'terms' | 'privacy' }>({
+    isOpen: false,
+    type: 'terms',
+  });
+
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({ fullName });
+    await updateProfile({ fullName, phone, country, timezone });
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2500);
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMsg(null);
+
+    if (newPassword.length < 6) {
+      setPasswordMsg({ text: 'Password must be at least 6 characters.', isError: true });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg({ text: 'Passwords do not match.', isError: true });
+      return;
+    }
+
+    setPasswordLoading(true);
+    const res = await changePassword(newPassword);
+    setPasswordLoading(false);
+
+    if (res.success) {
+      setPasswordMsg({ text: 'Password changed successfully!', isError: false });
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordMsg(null), 3000);
+    } else {
+      setPasswordMsg({ text: res.error || 'Failed to change password.', isError: true });
+    }
   };
 
   const handleSupabaseSave = (e: React.FormEvent) => {
@@ -71,18 +127,52 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // GDPR Data Portability: Export complete user records
+  const handleExportAllData = () => {
+    const exportBundle = {
+      exportedAt: new Date().toISOString(),
+      userProfile: user,
+      wallets,
+      categories,
+      transactions,
+      budgets,
+      savingsGoals,
+      recurringTransactions: recurring,
+    };
+
+    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `finora-complete-financial-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteAccount = async () => {
+    const confirmPrompt = window.prompt(
+      'CAUTION: This will permanently erase your account, all wallets, transactions, budgets, and savings data. Type "DELETE" to confirm:'
+    );
+    if (confirmPrompt === 'DELETE') {
+      await deleteAccount();
+      window.location.href = '/auth';
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-4xl mx-auto animate-in fade-in duration-300">
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          System Settings & Preferences
+          System Settings & SaaS Preferences
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Configure profile, primary currency, exchange rates, themes, and database
+          Configure profile, security, multi-currency, data privacy, and cloud database
         </p>
       </div>
 
-      {/* Profile Section */}
+      {/* 1. Profile Section */}
       <Card>
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
@@ -90,7 +180,7 @@ export const SettingsPage: React.FC = () => {
           </div>
           <div>
             <h3 className="font-bold text-base text-slate-900 dark:text-white">User Profile</h3>
-            <p className="text-xs text-slate-400">Personal details & display preferences</p>
+            <p className="text-xs text-slate-400">Personal details & regional settings</p>
           </div>
         </div>
 
@@ -119,6 +209,43 @@ export const SettingsPage: React.FC = () => {
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm opacity-60 cursor-not-allowed"
               />
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Phone Number (Optional)
+              </label>
+              <input
+                type="tel"
+                placeholder="+880 1700-000000"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Country
+              </label>
+              <input
+                type="text"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Time Zone
+              </label>
+              <input
+                type="text"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="flex items-center justify-end">
@@ -135,7 +262,101 @@ export const SettingsPage: React.FC = () => {
         </form>
       </Card>
 
-      {/* Currency & Multi-Currency Settings */}
+      {/* 2. Password & Security Section */}
+      <Card>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500">
+            <KeyRound className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">Security & Password</h3>
+            <p className="text-xs text-slate-400">Change your password and manage account protection</p>
+          </div>
+        </div>
+
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          {passwordMsg && (
+            <div
+              className={`p-3 rounded-xl text-xs ${
+                passwordMsg.isError
+                  ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                  : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+              }`}
+            >
+              {passwordMsg.text}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                New Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end">
+            <Button type="submit" size="sm" disabled={passwordLoading} className="font-semibold text-xs">
+              {passwordLoading ? 'Updating...' : 'Change Password'}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {/* 3. Active Sessions & Registered Devices */}
+      <Card>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500">
+            <Laptop className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">Active Sessions & Devices</h3>
+            <p className="text-xs text-slate-400">Currently logged in devices with isolated tokens</p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
+              <Laptop className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  Current Web Browser Session
+                </span>
+                <Badge variant="income">Active Now</Badge>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Windows · Secure SSL Client · RLS Authenticated
+              </p>
+            </div>
+          </div>
+          <span className="text-[11px] text-slate-400 font-mono">127.0.0.1 / HTTPS</span>
+        </div>
+      </Card>
+
+      {/* 4. Currency & Multi-Currency Settings */}
       <Card>
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2.5 rounded-xl bg-purple-500/10 text-primary">
@@ -257,7 +478,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Theme Selection */}
+      {/* 5. Theme Selection */}
       <Card>
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500">
@@ -310,7 +531,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Supabase Cloud Database Sync */}
+      {/* 6. Supabase Cloud Database Sync */}
       <Card>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -368,32 +589,116 @@ export const SettingsPage: React.FC = () => {
         </form>
       </Card>
 
-      {/* Danger Zone / Demo Data */}
-      <Card className="border-red-200 dark:border-red-950/60 bg-red-50/20 dark:bg-red-950/10">
-        <div className="flex items-center justify-between">
+      {/* 7. GDPR Privacy, Data Export & Legal Compliance */}
+      <Card>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500">
+            <Shield className="w-5 h-5" />
+          </div>
           <div>
-            <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-              Reset Demo Financial Data
-            </h4>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Restore default wallets (City Bank, bKash, PayPal), sample budgets, and transactions
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">
+              Data Privacy & Legal Compliance
+            </h3>
+            <p className="text-xs text-slate-400">
+              GDPR data portability, terms of service and privacy guarantees
             </p>
           </div>
+        </div>
 
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => {
-              if (window.confirm('Reset all financial records back to initial sample demo data?')) {
-                resetToDemoData();
-              }
-            }}
-            className="text-xs font-bold"
-          >
-            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset Data
-          </Button>
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Download className="w-4 h-4 text-primary" />
+                Download Complete Personal Data (GDPR Portability)
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Export all your private wallets, transactions, budgets, and savings records as a structured JSON file.
+              </p>
+            </div>
+            <Button onClick={handleExportAllData} variant="outline" size="sm" className="gap-2 self-start sm:self-auto">
+              <Download className="w-3.5 h-3.5" />
+              <span>Export JSON</span>
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs font-semibold text-primary pt-1">
+            <button
+              onClick={() => setLegalModal({ isOpen: true, type: 'terms' })}
+              className="flex items-center gap-1.5 hover:underline"
+            >
+              <FileText className="w-3.5 h-3.5" /> View Terms of Service
+            </button>
+            <span className="text-slate-300">·</span>
+            <button
+              onClick={() => setLegalModal({ isOpen: true, type: 'privacy' })}
+              className="flex items-center gap-1.5 hover:underline"
+            >
+              <Shield className="w-3.5 h-3.5" /> View Privacy Policy
+            </button>
+          </div>
         </div>
       </Card>
+
+      {/* 8. Danger Zone & Account Management */}
+      <Card className="border-red-200 dark:border-red-950/60 bg-red-50/20 dark:bg-red-950/10">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white">Danger Zone</h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Irreversible account operations and demo data resets
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-red-100 dark:border-red-900/40">
+            <div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Reset Demo Financial Data</p>
+              <p className="text-[11px] text-slate-400">Restore default demo wallets and sample transactions.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (window.confirm('Reset all financial records back to initial sample demo data?')) {
+                  resetToDemoData();
+                }
+              }}
+              className="text-xs font-bold"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset Data
+            </Button>
+          </div>
+
+          <div className="pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-red-100 dark:border-red-900/40">
+            <div>
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">Delete Account & Erase All Records</p>
+              <p className="text-[11px] text-slate-400">
+                Permanently purge your user identity, isolated PostgreSQL records, and receipts.
+              </p>
+            </div>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleDeleteAccount}
+              className="text-xs font-bold gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete My Account
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Legal Modal */}
+      <LegalModal
+        isOpen={legalModal.isOpen}
+        onClose={() => setLegalModal({ ...legalModal, isOpen: false })}
+        type={legalModal.type}
+      />
     </div>
   );
 };

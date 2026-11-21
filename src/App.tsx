@@ -15,6 +15,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { RecurringPage } from './pages/RecurringPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AdminPage } from './pages/AdminPage';
 import { AuthPage } from './pages/AuthPage';
 
 // Simple route guard to allow both demo users and authenticated users
@@ -59,6 +60,7 @@ export const App: React.FC = () => {
                 <Route path="/recurring" element={<RecurringPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/admin" element={<AdminPage />} />
               </Route>
 
               {/* Catch all fallback */}

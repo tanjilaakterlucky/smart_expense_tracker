@@ -12,6 +12,7 @@ import {
   Settings,
   Tags,
   ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
 import { cn } from '../../lib/utils';
@@ -34,6 +35,7 @@ export const Sidebar: React.FC<{ isOpen?: boolean; onClose?: () => void }> = ({
     { name: 'Recurring', path: '/recurring', icon: Repeat },
     { name: 'Notifications', path: '/notifications', icon: Bell, badge: unreadCount },
     { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Admin Panel', path: '/admin', icon: ShieldAlert },
   ];
 
   return (
