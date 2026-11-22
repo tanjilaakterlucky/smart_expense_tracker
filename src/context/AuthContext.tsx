@@ -1,12 +1,11 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { UserProfile } from '../types';
-import { INITIAL_USER, storage } from '../lib/storage';
+import { storage } from '../lib/storage';
 import { supabase, getSupabaseCredentials } from '../lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  loginDemoUser: (customName?: string, customEmail?: string) => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   changePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -17,15 +16,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Default to stored user if not demo, otherwise null so login page is shown
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = storage.get<UserProfile | null>('user_profile', null);
-    if (saved && !saved.isDemoUser) {
-      return saved;
-    }
-    return null;
-  });
-
+  // Only restore session if Supabase user (never demo)
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const { isConfigured } = getSupabaseCredentials();
 
@@ -63,14 +55,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Fallback to "User" if name is unavailable or empty (Requirement 6)
+    // Fallback to "User" if name is unavailable or empty
     if (!fullName || fullName.trim() === '') {
       fullName = 'User';
     }
 
     const constructed: UserProfile = {
       id: sessionUser.id,
-      email: sessionUser.email || 'user@finora.io',
+      email: sessionUser.email || '',
       fullName,
       avatarUrl,
       phone,
@@ -105,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (isMounted) setLoading(false);
       });
 
-      // 2. Listen to Auth State Changes
+      // 2. Listen to Auth State Changes (including PASSWORD_RECOVERY)
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!isMounted) return;
         if (session?.user) {
@@ -127,21 +119,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         subscription.unsubscribe();
       };
     } else {
+      // Supabase not configured — do not allow demo access; just show loading=false
       setLoading(false);
     }
   }, [isConfigured, fetchAndConstructUserProfile]);
-
-  const loginDemoUser = (customName?: string, customEmail?: string) => {
-    const chosenName = (customName && customName.trim()) || 'User';
-    const demoUser: UserProfile = {
-      ...INITIAL_USER,
-      fullName: chosenName,
-      email: customEmail || (user?.email || INITIAL_USER.email),
-      isDemoUser: true,
-    };
-    setUser(demoUser);
-    storage.set('user_profile', demoUser);
-  };
 
   const logout = async () => {
     if (supabase && isConfigured) {
@@ -165,7 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return updated;
     });
 
-    if (supabase && isConfigured && user && !user.isDemoUser) {
+    if (supabase && isConfigured && user) {
       try {
         // 1. Update Supabase Auth user metadata
         const { error: authErr } = await supabase.auth.updateUser({
@@ -204,18 +185,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!newPassword || newPassword.length < 6) {
       return { success: false, error: 'Password must be at least 6 characters long.' };
     }
-    if (supabase && isConfigured && user && !user.isDemoUser) {
+    if (supabase && isConfigured && user) {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) {
         return { success: false, error: error.message };
       }
       return { success: true };
     }
-    return { success: true };
+    return { success: false, error: 'Not connected to authentication service.' };
   };
 
   const deleteAccount = async (): Promise<{ success: boolean; error?: string }> => {
-    if (supabase && isConfigured && user && !user.isDemoUser) {
+    if (supabase && isConfigured && user) {
       try {
         await supabase.from('audit_logs').insert({
           user_id: user.id,
@@ -236,7 +217,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         loading,
-        loginDemoUser,
         logout,
         updateProfile,
         changePassword,

@@ -78,7 +78,19 @@ export const RecurringPage: React.FC = () => {
       </div>
 
       {/* List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {recurring.length === 0 ? (
+        <Card className="p-12 text-center border-dashed">
+          <Repeat className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+          <h3 className="font-bold text-base text-slate-900 dark:text-white">No Recurring Rules</h3>
+          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+            Set up automatic reminders for monthly broadband bills, house rent, or salary retainers.
+          </p>
+          <Button size="sm" onClick={() => setIsModalOpen(true)} className="mt-4 text-xs font-bold">
+            <Plus className="w-4 h-4 mr-1.5" /> Add Your First Recurring Rule
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {recurring.map((item: RecurringTransaction) => {
           const cat = categoryMap.get(item.categoryId);
           const w = walletMap.get(item.walletId);
@@ -159,7 +171,8 @@ export const RecurringPage: React.FC = () => {
             </Card>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* Add Recurring Modal */}
       <Modal

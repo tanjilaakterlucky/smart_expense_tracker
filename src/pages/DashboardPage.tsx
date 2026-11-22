@@ -61,15 +61,36 @@ export const DashboardPage: React.FC = () => {
   const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
   const walletMap = new Map<string, Wallet>(wallets.map((w) => [w.id, w]));
 
-  // Monthly Income vs Expense Chart Data
-  const barChartData = [
-    { name: 'Jun', income: 95000, expense: 48000 },
-    { name: 'Jul', income: 102000, expense: 53000 },
-    { name: 'Aug', income: 115000, expense: 62000 },
-    { name: 'Sep', income: 108000, expense: 51000 },
-    { name: 'Oct', income: 125000, expense: 58000 },
-    { name: 'Nov', income: monthlyIncome || 120000, expense: monthlyExpense || 54000 },
-  ];
+  // Dynamically compute monthly Income vs Expense Flow for the last 6 months
+  const barChartData = React.useMemo(() => {
+    const months: { key: string; name: string; income: number; expense: number }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = d.toLocaleString('default', { month: 'short' });
+      months.push({ key: monthKey, name: monthName, income: 0, expense: 0 });
+    }
+
+    transactions.forEach((tx) => {
+      const txMonth = tx.date ? tx.date.substring(0, 7) : '';
+      const target = months.find((m) => m.key === txMonth);
+      if (target) {
+        const converted = convertCurrency(tx.amount, tx.currency, primaryCurrency, exchangeRates);
+        if (tx.type === 'income') {
+          target.income += converted;
+        } else if (tx.type === 'expense') {
+          target.expense += converted;
+        }
+      }
+    });
+
+    return months.map(({ name, income, expense }) => ({
+      name,
+      income: Math.round(income * 100) / 100,
+      expense: Math.round(expense * 100) / 100,
+    }));
+  }, [transactions, primaryCurrency, exchangeRates]);
 
   // Category Expense Distribution for Donut Chart
   const categoryExpenseMap: Record<string, { name: string; value: number; color: string }> = {};
@@ -145,7 +166,7 @@ export const DashboardPage: React.FC = () => {
         <StatCard
           title="Total Net Worth"
           amount={formatCurrency(totalBalance, primaryCurrency)}
-          subtitle={`Across ${wallets.length} active wallets`}
+          subtitle={wallets.length > 0 ? `Across ${wallets.length} active wallets` : 'No wallets added yet'}
           icon={<WalletIcon className="w-6 h-6" />}
           iconBgColor="bg-primary/10 text-primary"
         />
@@ -153,7 +174,7 @@ export const DashboardPage: React.FC = () => {
         <StatCard
           title="Monthly Income"
           amount={formatCurrency(monthlyIncome, primaryCurrency)}
-          trend={{ value: '12.4%', isPositive: true }}
+          subtitle="Total income logged this month"
           icon={<TrendingUp className="w-6 h-6" />}
           iconBgColor="bg-emerald-500/10 text-income"
         />
@@ -161,7 +182,7 @@ export const DashboardPage: React.FC = () => {
         <StatCard
           title="Monthly Expenses"
           amount={formatCurrency(monthlyExpense, primaryCurrency)}
-          trend={{ value: '4.2%', isPositive: false }}
+          subtitle="Total spent this month"
           icon={<TrendingDown className="w-6 h-6" />}
           iconBgColor="bg-rose-500/10 text-expense"
         />
@@ -290,46 +311,60 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-            {wallets.map((wallet) => {
-              const convertedToPrimary = convertCurrency(
-                wallet.balance,
-                wallet.currency,
-                primaryCurrency,
-                exchangeRates
-              );
-              return (
-                <div
-                  key={wallet.id}
-                  className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-primary/40 transition-all flex flex-col justify-between"
-                  style={{ borderLeftColor: wallet.color, borderLeftWidth: '4px' }}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                        {wallet.name}
-                      </p>
-                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-                        {wallet.type} {wallet.accountNumber ? `• ${wallet.accountNumber}` : ''}
-                      </span>
+          {wallets.length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+              <p className="text-xs text-slate-400 mb-3">No wallets added yet. Create your first wallet to track balances.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsWalletModalOpen(true)}
+                className="text-xs font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add Your First Wallet
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+              {wallets.map((wallet) => {
+                const convertedToPrimary = convertCurrency(
+                  wallet.balance,
+                  wallet.currency,
+                  primaryCurrency,
+                  exchangeRates
+                );
+                return (
+                  <div
+                    key={wallet.id}
+                    className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-primary/40 transition-all flex flex-col justify-between"
+                    style={{ borderLeftColor: wallet.color, borderLeftWidth: '4px' }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                          {wallet.name}
+                        </p>
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                          {wallet.type} {wallet.accountNumber ? `• ${wallet.accountNumber}` : ''}
+                        </span>
+                      </div>
+                      <CreditCard className="w-4 h-4 text-slate-400" />
                     </div>
-                    <CreditCard className="w-4 h-4 text-slate-400" />
-                  </div>
 
-                  <div className="mt-3">
-                    <p className="text-base font-extrabold text-slate-900 dark:text-white">
-                      {formatCurrency(wallet.balance, wallet.currency)}
-                    </p>
-                    {wallet.currency !== primaryCurrency && (
-                      <p className="text-[11px] text-slate-400">
-                        ≈ {formatCurrency(convertedToPrimary, primaryCurrency)}
+                    <div className="mt-3">
+                      <p className="text-base font-extrabold text-slate-900 dark:text-white">
+                        {formatCurrency(wallet.balance, wallet.currency)}
                       </p>
-                    )}
+                      {wallet.currency !== primaryCurrency && (
+                        <p className="text-[11px] text-slate-400">
+                          ≈ {formatCurrency(convertedToPrimary, primaryCurrency)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
 
         {/* Budget Progress Snapshot */}
@@ -346,45 +381,51 @@ export const DashboardPage: React.FC = () => {
             </Link>
           </div>
 
-          <div className="space-y-4">
-            {budgets.slice(0, 3).map((b) => {
-              const cat = categoryMap.get(b.categoryId);
-              const spent = transactions
-                .filter((t) => t.type === 'expense' && t.categoryId === b.categoryId)
-                .reduce(
-                  (sum, t) => sum + convertCurrency(t.amount, t.currency, primaryCurrency, exchangeRates),
-                  0
+          {budgets.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No active budgets. Create a budget to monitor category spending limits.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {budgets.slice(0, 3).map((b) => {
+                const cat = categoryMap.get(b.categoryId);
+                const spent = transactions
+                  .filter((t) => t.type === 'expense' && t.categoryId === b.categoryId)
+                  .reduce(
+                    (sum, t) => sum + convertCurrency(t.amount, t.currency, primaryCurrency, exchangeRates),
+                    0
+                  );
+                const percentage = Math.min(100, Math.round((spent / b.amount) * 100));
+
+                return (
+                  <div key={b.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {cat?.name || 'Category'}
+                      </span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {percentage}%
+                      </span>
+                    </div>
+
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          percentage > 90 ? 'bg-expense' : percentage > 70 ? 'bg-warning' : 'bg-primary'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>Spent: {formatCurrency(spent, primaryCurrency)}</span>
+                      <span>Limit: {formatCurrency(b.amount, primaryCurrency)}</span>
+                    </div>
+                  </div>
                 );
-              const percentage = Math.min(100, Math.round((spent / b.amount) * 100));
-
-              return (
-                <div key={b.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {cat?.name || 'Category'}
-                    </span>
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      {percentage}%
-                    </span>
-                  </div>
-
-                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        percentage > 90 ? 'bg-expense' : percentage > 70 ? 'bg-warning' : 'bg-primary'
-                      }`}
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between text-[11px] text-slate-400">
-                    <span>Spent: {formatCurrency(spent, primaryCurrency)}</span>
-                    <span>Limit: {formatCurrency(b.amount, primaryCurrency)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </Card>
       </div>
 
@@ -418,7 +459,14 @@ export const DashboardPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {transactions.slice(0, 6).map((tx) => {
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-xs text-slate-400">
+                    No transactions yet. Click "+ Add Expense" or "+ Add Income" above to log your first transaction.
+                  </td>
+                </tr>
+              ) : (
+                transactions.slice(0, 6).map((tx) => {
                 const cat = categoryMap.get(tx.categoryId);
                 const w = walletMap.get(tx.walletId);
                 const toW = tx.toWalletId ? walletMap.get(tx.toWalletId) : null;
@@ -478,7 +526,8 @@ export const DashboardPage: React.FC = () => {
                     </td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>

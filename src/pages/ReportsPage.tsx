@@ -40,15 +40,37 @@ export const ReportsPage: React.FC = () => {
 
   const categoryMap = useMemo(() => new Map<string, Category>(categories.map((c) => [c.id, c])), [categories]);
 
-  // Area Chart Trend Data (Past 6 periods)
-  const trendData = [
-    { period: 'May', income: 92000, expense: 45000, savings: 47000 },
-    { period: 'Jun', income: 95000, expense: 48000, savings: 47000 },
-    { period: 'Jul', income: 105000, expense: 52000, savings: 53000 },
-    { period: 'Aug', income: 112000, expense: 61000, savings: 51000 },
-    { period: 'Sep', income: 108000, expense: 50000, savings: 58000 },
-    { period: 'Current', income: monthlyIncome || 120000, expense: monthlyExpense || 54000, savings: monthlySavings || 66000 },
-  ];
+  // Area Chart Trend Data (Past 6 months dynamic from real transactions)
+  const trendData = useMemo(() => {
+    const periods: { key: string; period: string; income: number; expense: number; savings: number }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const periodName = i === 0 ? 'Current' : d.toLocaleString('default', { month: 'short' });
+      periods.push({ key: monthKey, period: periodName, income: 0, expense: 0, savings: 0 });
+    }
+
+    transactions.forEach((tx) => {
+      const txMonth = tx.date ? tx.date.substring(0, 7) : '';
+      const target = periods.find((p) => p.key === txMonth);
+      if (target) {
+        const converted = convertCurrency(tx.amount, tx.currency, primaryCurrency, exchangeRates);
+        if (tx.type === 'income') {
+          target.income += converted;
+        } else if (tx.type === 'expense') {
+          target.expense += converted;
+        }
+      }
+    });
+
+    return periods.map(({ period, income, expense }) => ({
+      period,
+      income: Math.round(income * 100) / 100,
+      expense: Math.round(expense * 100) / 100,
+      savings: Math.round((income - expense) * 100) / 100,
+    }));
+  }, [transactions, primaryCurrency, exchangeRates]);
 
   // Category Expense Ranking
   const categoryRanking = useMemo(() => {
@@ -173,33 +195,39 @@ export const ReportsPage: React.FC = () => {
           <p className="text-xs text-slate-400 mb-5">Ranked by total expenditure</p>
 
           <div className="space-y-4">
-            {categoryRanking.map((item, idx) => {
-              const maxVal = categoryRanking[0]?.total || 1;
-              const barPercent = Math.round((item.total / maxVal) * 100);
+            {categoryRanking.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No expense transactions recorded yet. Log an expense to view category rankings.
+              </div>
+            ) : (
+              categoryRanking.map((item, idx) => {
+                const maxVal = categoryRanking[0]?.total || 1;
+                const barPercent = Math.round((item.total / maxVal) * 100);
 
-              return (
-                <div key={item.name} className="space-y-1.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-400">#{idx + 1}</span>
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{item.name}</span>
-                      <span className="text-[11px] text-slate-400">({item.count} txns)</span>
+                return (
+                  <div key={item.name} className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-400">#{idx + 1}</span>
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{item.name}</span>
+                        <span className="text-[11px] text-slate-400">({item.count} txns)</span>
+                      </div>
+                      <span className="font-extrabold text-slate-900 dark:text-white">
+                        {formatCurrency(item.total, primaryCurrency)}
+                      </span>
                     </div>
-                    <span className="font-extrabold text-slate-900 dark:text-white">
-                      {formatCurrency(item.total, primaryCurrency)}
-                    </span>
-                  </div>
 
-                  <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${barPercent}%`, backgroundColor: item.color }}
-                    />
+                    <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${barPercent}%`, backgroundColor: item.color }}
+                      />
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </Card>
 

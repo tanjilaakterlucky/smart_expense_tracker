@@ -667,20 +667,20 @@ export const SettingsPage: React.FC = () => {
 
           <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-red-100 dark:border-red-900/40">
             <div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Reset Demo Financial Data</p>
-              <p className="text-[11px] text-slate-400">Restore default demo wallets and sample transactions.</p>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Clear All Financial Records</p>
+              <p className="text-[11px] text-slate-400">Clear all transactions, wallets, and budgets to start with a fresh 0 balance.</p>
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                if (window.confirm('Reset all financial records back to initial sample demo data?')) {
+                if (window.confirm('Are you sure you want to clear all your financial records and start with a fresh clean balance?')) {
                   resetToDemoData();
                 }
               }}
               className="text-xs font-bold"
             >
-              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset Data
+              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Clear All Data
             </Button>
           </div>
 

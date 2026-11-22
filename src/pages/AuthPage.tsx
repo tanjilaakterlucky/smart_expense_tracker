@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { supabase } from '../lib/supabase';
-import { ShieldCheck, Mail, Lock, User, ArrowRight, Sparkles, Check, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, User, ArrowRight, Check, AlertCircle, Eye, EyeOff, ServerOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { LegalModal } from '../components/legal/LegalModal';
 
 export const AuthPage: React.FC = () => {
-  const { loginDemoUser, updateProfile, isSupabaseConnected } = useAuth();
+  const { updateProfile, isSupabaseConnected } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
@@ -54,6 +54,14 @@ export const AuthPage: React.FC = () => {
     e.preventDefault();
     setMessage(null);
 
+    if (!isSupabaseConnected || !supabase) {
+      setMessage({
+        text: 'Authentication service is not configured. Please contact the administrator.',
+        isError: true,
+      });
+      return;
+    }
+
     // Validation checks
     if (mode === 'register') {
       if (!fullName.trim()) {
@@ -78,14 +86,6 @@ export const AuthPage: React.FC = () => {
 
     const trimmedName = fullName.trim() || 'User';
 
-    if (!isSupabaseConnected || !supabase) {
-      // Local/Demo Mode fallback if Supabase is not configured yet
-      loginDemoUser(trimmedName, email.trim());
-      navigate('/');
-      setLoading(false);
-      return;
-    }
-
     try {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -100,7 +100,24 @@ export const AuthPage: React.FC = () => {
             emailRedirectTo: window.location.origin,
           },
         });
-        if (error) throw error;
+
+        if (error) {
+          // Friendly message for duplicate email
+          if (
+            error.message.toLowerCase().includes('already registered') ||
+            error.message.toLowerCase().includes('already in use') ||
+            error.message.toLowerCase().includes('user already') ||
+            error.message.toLowerCase().includes('email address is already')
+          ) {
+            setMessage({
+              text: 'An account with this email already exists. Please sign in instead.',
+              isError: true,
+            });
+            setLoading(false);
+            return;
+          }
+          throw error;
+        }
 
         // Upsert directly to profiles table to guarantee instant database persistence
         if (data.user) {
@@ -118,11 +135,13 @@ export const AuthPage: React.FC = () => {
         }
 
         if (data.session) {
+          // Email confirmation disabled — user is logged in immediately
           await updateProfile({ fullName: trimmedName });
           navigate('/');
         } else {
+          // Email confirmation required
           setMessage({
-            text: `Account created for ${trimmedName}! Please check your email to verify before signing in.`,
+            text: `✅ Account created for ${trimmedName}! Check your email (${email}) and click the verification link before signing in.`,
             isError: false,
           });
         }
@@ -131,10 +150,17 @@ export const AuthPage: React.FC = () => {
           redirectTo: `${window.location.origin}/settings`,
         });
         if (error) throw error;
-        setMessage({ text: 'Password reset link sent to your email address.', isError: false });
+        setMessage({ text: '✅ Password reset link sent! Check your email inbox.', isError: false });
       }
     } catch (err: any) {
-      setMessage({ text: err.message || 'Authentication error occurred', isError: true });
+      // Map common Supabase errors to friendly messages
+      let errText = err.message || 'Authentication error occurred';
+      if (errText.toLowerCase().includes('invalid login credentials')) {
+        errText = 'Incorrect email or password. Please try again.';
+      } else if (errText.toLowerCase().includes('email not confirmed')) {
+        errText = 'Please verify your email before signing in. Check your inbox.';
+      }
+      setMessage({ text: errText, isError: true });
     } finally {
       setLoading(false);
     }
@@ -142,8 +168,10 @@ export const AuthPage: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     if (!isSupabaseConnected || !supabase) {
-      loginDemoUser();
-      navigate('/');
+      setMessage({
+        text: 'Authentication service is not configured. Please contact the administrator.',
+        isError: true,
+      });
       return;
     }
     try {
@@ -176,6 +204,19 @@ export const AuthPage: React.FC = () => {
             Smart Personal Finance & Multi-Tenant Wealth Management
           </p>
         </div>
+
+        {/* Not configured warning */}
+        {!isSupabaseConnected && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+            <ServerOff className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Database Not Configured</p>
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+                Authentication is unavailable. Please contact the administrator to configure the backend.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Card */}
         <Card className="p-6 sm:p-8 shadow-xl">
@@ -227,8 +268,8 @@ export const AuthPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all shadow-sm"
+                disabled={loading || !isSupabaseConnected}
+                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -421,7 +462,12 @@ export const AuthPage: React.FC = () => {
               </div>
             )}
 
-            <Button type="submit" variant="primary" className="w-full justify-center gap-2 mt-2" disabled={loading}>
+            <Button
+              type="submit"
+              variant="primary"
+              className="w-full justify-center gap-2 mt-2"
+              disabled={loading || !isSupabaseConnected}
+            >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
@@ -436,23 +482,6 @@ export const AuthPage: React.FC = () => {
               )}
             </Button>
           </form>
-
-          {/* Local Demo Fallback Banner */}
-          {!isSupabaseConnected && (
-            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  loginDemoUser();
-                  navigate('/');
-                }}
-                className="text-xs text-slate-500 hover:text-primary transition-colors flex items-center justify-center gap-1.5 mx-auto font-medium"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>Or explore with instant Demo Mode</span>
-              </button>
-            </div>
-          )}
         </Card>
 
         {/* Security badge footer */}

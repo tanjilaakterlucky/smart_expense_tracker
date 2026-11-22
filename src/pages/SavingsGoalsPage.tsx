@@ -51,7 +51,26 @@ export const SavingsGoalsPage: React.FC = () => {
       </div>
 
       {/* Goals Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {savingsGoals.length === 0 ? (
+        <Card className="p-12 text-center border-dashed">
+          <Target className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+          <h3 className="font-bold text-base text-slate-900 dark:text-white">No Savings Goals Set</h3>
+          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+            Create a savings target for an emergency fund, gadget, or vacation and deposit funds toward it.
+          </p>
+          <Button
+            size="sm"
+            onClick={() => {
+              setGoalToEdit(null);
+              setIsGoalModalOpen(true);
+            }}
+            className="mt-4 text-xs font-bold"
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> Create Your First Goal
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {savingsGoals.map((g: SavingsGoal) => {
           const percent = Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100));
           const remaining = Math.max(0, g.targetAmount - g.currentAmount);
@@ -159,7 +178,8 @@ export const SavingsGoalsPage: React.FC = () => {
             </Card>
           );
         })}
-      </div>
+        </div>
+      )}
 
       <SavingsGoalModal
         isOpen={isGoalModalOpen}

@@ -102,7 +102,26 @@ export const WalletsPage: React.FC = () => {
       </div>
 
       {/* Grid of All Wallets */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {wallets.length === 0 ? (
+        <Card className="p-12 text-center border-dashed">
+          <CreditCard className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+          <h3 className="font-bold text-base text-slate-900 dark:text-white">No Wallets Yet</h3>
+          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+            Add your cash, bank accounts, bKash, or Nagad wallets to start managing balances.
+          </p>
+          <Button
+            size="sm"
+            onClick={() => {
+              setWalletToEdit(null);
+              setIsWalletModalOpen(true);
+            }}
+            className="mt-4 text-xs font-bold"
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> Create Your First Wallet
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {wallets.map((w: Wallet) => {
           const converted = convertCurrency(w.balance, w.currency, primaryCurrency, exchangeRates);
           const isSelected = selectedWalletId === w.id;
@@ -202,7 +221,8 @@ export const WalletsPage: React.FC = () => {
             </Card>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* Selected Wallet History */}
       {selectedWallet && (
