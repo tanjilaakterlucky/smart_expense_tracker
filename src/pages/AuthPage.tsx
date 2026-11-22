@@ -226,11 +226,10 @@ export const AuthPage: React.FC = () => {
                 setMode('login');
                 setMessage(null);
               }}
-              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${
-                mode === 'login'
+              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${mode === 'login'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-400 hover:text-slate-600'
-              }`}
+                }`}
             >
               Sign In
             </button>
@@ -239,11 +238,10 @@ export const AuthPage: React.FC = () => {
                 setMode('register');
                 setMessage(null);
               }}
-              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${
-                mode === 'register'
+              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${mode === 'register'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-400 hover:text-slate-600'
-              }`}
+                }`}
             >
               Create Account
             </button>
@@ -252,11 +250,10 @@ export const AuthPage: React.FC = () => {
                 setMode('forgot');
                 setMessage(null);
               }}
-              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${
-                mode === 'forgot'
+              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${mode === 'forgot'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-400 hover:text-slate-600'
-              }`}
+                }`}
             >
               Reset
             </button>
@@ -305,11 +302,10 @@ export const AuthPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {message && (
               <div
-                className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-                  message.isError
+                className={`p-3 rounded-xl text-xs flex items-center gap-2 ${message.isError
                     ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
                     : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                }`}
+                  }`}
               >
                 {message.isError ? (
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
