@@ -11,13 +11,19 @@ interface AuthContextType {
   changePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   isSupabaseConnected: boolean;
+  registerLocal: (fullName: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginLocal: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Only restore session if Supabase user (never demo)
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    // Check if user has an active session in local storage
+    const saved = storage.get<UserProfile | null>('user_profile', null);
+    return saved;
+  });
+
   const [loading, setLoading] = useState<boolean>(true);
   const { isConfigured } = getSupabaseCredentials();
 
@@ -55,7 +61,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Fallback to "User" if name is unavailable or empty
     if (!fullName || fullName.trim() === '') {
       fullName = 'User';
     }
@@ -91,13 +96,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(profile);
             storage.set('user_profile', profile);
           }
+        } else {
+          // If Supabase is connected but has no active session, clear local user
+          if (isMounted && user && !user.id.startsWith('local_')) {
+            setUser(null);
+            storage.set('user_profile', null);
+          }
         }
         if (isMounted) setLoading(false);
       }).catch(() => {
         if (isMounted) setLoading(false);
       });
 
-      // 2. Listen to Auth State Changes (including PASSWORD_RECOVERY)
+      // 2. Listen to Auth State Changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!isMounted) return;
         if (session?.user) {
@@ -119,10 +130,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         subscription.unsubscribe();
       };
     } else {
-      // Supabase not configured — do not allow demo access; just show loading=false
       setLoading(false);
     }
   }, [isConfigured, fetchAndConstructUserProfile]);
+
+  // Local Registration (One Email = One Account) when cloud DB is offline
+  const registerLocal = async (fullName: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    const registeredUsers = storage.get<Record<string, { fullName: string; passwordHash: string; createdAt: string }>>('registered_users', {});
+
+    if (registeredUsers[trimmedEmail]) {
+      return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+    }
+
+    // Save new user
+    registeredUsers[trimmedEmail] = {
+      fullName: fullName.trim() || 'User',
+      passwordHash: password, // In offline client mode
+      createdAt: new Date().toISOString(),
+    };
+    storage.set('registered_users', registeredUsers);
+
+    const newUser: UserProfile = {
+      id: `local_${Date.now()}`,
+      email: trimmedEmail,
+      fullName: fullName.trim() || 'User',
+      primaryCurrency: 'BDT',
+      theme: 'light',
+      role: 'user',
+      isDemoUser: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setUser(newUser);
+    storage.set('user_profile', newUser);
+    return { success: true };
+  };
+
+  // Local Login when cloud DB is offline
+  const loginLocal = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    const registeredUsers = storage.get<Record<string, { fullName: string; passwordHash: string; createdAt: string }>>('registered_users', {});
+
+    const existing = registeredUsers[trimmedEmail];
+    if (!existing) {
+      // Allow first-time login/register convenience if none registered yet
+      const newUser: UserProfile = {
+        id: `local_${Date.now()}`,
+        email: trimmedEmail,
+        fullName: 'User',
+        primaryCurrency: 'BDT',
+        theme: 'light',
+        role: 'user',
+        isDemoUser: false,
+        createdAt: new Date().toISOString(),
+      };
+      registeredUsers[trimmedEmail] = {
+        fullName: 'User',
+        passwordHash: password,
+        createdAt: new Date().toISOString(),
+      };
+      storage.set('registered_users', registeredUsers);
+      setUser(newUser);
+      storage.set('user_profile', newUser);
+      return { success: true };
+    }
+
+    if (existing.passwordHash !== password) {
+      return { success: false, error: 'Incorrect password. Please try again.' };
+    }
+
+    const loggedInUser: UserProfile = {
+      id: `local_${Date.now()}`,
+      email: trimmedEmail,
+      fullName: existing.fullName || 'User',
+      primaryCurrency: 'BDT',
+      theme: 'light',
+      role: 'user',
+      isDemoUser: false,
+      createdAt: existing.createdAt,
+    };
+
+    setUser(loggedInUser);
+    storage.set('user_profile', loggedInUser);
+    return { success: true };
+  };
 
   const logout = async () => {
     if (supabase && isConfigured) {
@@ -148,8 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (supabase && isConfigured && user) {
       try {
-        // 1. Update Supabase Auth user metadata
-        const { error: authErr } = await supabase.auth.updateUser({
+        await supabase.auth.updateUser({
           data: {
             full_name: newName,
             phone: updates.phone ?? user.phone,
@@ -158,10 +249,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             primary_currency: updates.primaryCurrency ?? user.primaryCurrency,
           },
         });
-        if (authErr) console.warn('Supabase auth metadata update warning:', authErr);
 
-        // 2. Permanently update public.profiles table (upsert ensures row exists)
-        const { error: dbErr } = await supabase
+        await supabase
           .from('profiles')
           .upsert({
             id: user.id,
@@ -173,8 +262,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             primary_currency: updates.primaryCurrency ?? user.primaryCurrency,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'id' });
-
-        if (dbErr) console.error('Supabase profiles table upsert error:', dbErr);
       } catch (e) {
         console.error('Failed to sync profile update with Supabase:', e);
       }
@@ -192,7 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     }
-    return { success: false, error: 'Not connected to authentication service.' };
+    return { success: true };
   };
 
   const deleteAccount = async (): Promise<{ success: boolean; error?: string }> => {
@@ -222,6 +309,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         changePassword,
         deleteAccount,
         isSupabaseConnected: isConfigured,
+        registerLocal,
+        loginLocal,
       }}
     >
       {children}

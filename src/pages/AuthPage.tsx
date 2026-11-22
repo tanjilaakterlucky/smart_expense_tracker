@@ -2,13 +2,26 @@ import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
-import { supabase } from '../lib/supabase';
-import { ShieldCheck, Mail, Lock, User, ArrowRight, Check, AlertCircle, Eye, EyeOff, ServerOff } from 'lucide-react';
+import { supabase, saveSupabaseCredentials } from '../lib/supabase';
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  User,
+  ArrowRight,
+  Check,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Database,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { LegalModal } from '../components/legal/LegalModal';
 
 export const AuthPage: React.FC = () => {
-  const { updateProfile, isSupabaseConnected } = useAuth();
+  const { updateProfile, isSupabaseConnected, registerLocal, loginLocal } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
@@ -20,6 +33,12 @@ export const AuthPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  // Supabase Connect Drawer State
+  const [showDbConfig, setShowDbConfig] = useState(false);
+  const [inputSbUrl, setInputSbUrl] = useState('');
+  const [inputSbKey, setInputSbKey] = useState('');
+  const [dbSaveSuccess, setDbSaveSuccess] = useState(false);
 
   // Legal modal state
   const [legalModal, setLegalModal] = useState<{ isOpen: boolean; type: 'terms' | 'privacy' }>({
@@ -50,17 +69,22 @@ export const AuthPage: React.FC = () => {
     }
   }, [password]);
 
+  const handleConnectSupabase = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputSbUrl.trim() || !inputSbKey.trim()) {
+      setMessage({ text: 'Please enter both Supabase Project URL and Anon Public Key.', isError: true });
+      return;
+    }
+    saveSupabaseCredentials(inputSbUrl.trim(), inputSbKey.trim());
+    setDbSaveSuccess(true);
+    setTimeout(() => {
+      window.location.reload();
+    }, 800);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
-
-    if (!isSupabaseConnected || !supabase) {
-      setMessage({
-        text: 'Authentication service is not configured. Please contact the administrator.',
-        isError: true,
-      });
-      return;
-    }
 
     // Validation checks
     if (mode === 'register') {
@@ -83,9 +107,42 @@ export const AuthPage: React.FC = () => {
     }
 
     setLoading(true);
-
     const trimmedName = fullName.trim() || 'User';
 
+    // 1. If Supabase is NOT connected, handle in Local Safe Mode (0 Balance, Real User Account)
+    if (!isSupabaseConnected || !supabase) {
+      try {
+        if (mode === 'register') {
+          const res = await registerLocal(trimmedName, email, password);
+          if (!res.success) {
+            setMessage({ text: res.error || 'Registration failed.', isError: true });
+            setLoading(false);
+            return;
+          }
+          navigate('/');
+        } else if (mode === 'login') {
+          const res = await loginLocal(email, password);
+          if (!res.success) {
+            setMessage({ text: res.error || 'Login failed.', isError: true });
+            setLoading(false);
+            return;
+          }
+          navigate('/');
+        } else if (mode === 'forgot') {
+          setMessage({
+            text: 'Cloud database not configured. Please use your chosen password or connect Supabase above.',
+            isError: false,
+          });
+        }
+      } catch (err: any) {
+        setMessage({ text: err.message || 'Authentication error', isError: true });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // 2. If Supabase IS connected, handle via Supabase Auth
     try {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -102,7 +159,6 @@ export const AuthPage: React.FC = () => {
         });
 
         if (error) {
-          // Friendly message for duplicate email
           if (
             error.message.toLowerCase().includes('already registered') ||
             error.message.toLowerCase().includes('already in use') ||
@@ -119,7 +175,6 @@ export const AuthPage: React.FC = () => {
           throw error;
         }
 
-        // Upsert directly to profiles table to guarantee instant database persistence
         if (data.user) {
           try {
             await supabase.from('profiles').upsert({
@@ -135,11 +190,9 @@ export const AuthPage: React.FC = () => {
         }
 
         if (data.session) {
-          // Email confirmation disabled — user is logged in immediately
           await updateProfile({ fullName: trimmedName });
           navigate('/');
         } else {
-          // Email confirmation required
           setMessage({
             text: `✅ Account created for ${trimmedName}! Check your email (${email}) and click the verification link before signing in.`,
             isError: false,
@@ -153,7 +206,6 @@ export const AuthPage: React.FC = () => {
         setMessage({ text: '✅ Password reset link sent! Check your email inbox.', isError: false });
       }
     } catch (err: any) {
-      // Map common Supabase errors to friendly messages
       let errText = err.message || 'Authentication error occurred';
       if (errText.toLowerCase().includes('invalid login credentials')) {
         errText = 'Incorrect email or password. Please try again.';
@@ -169,7 +221,7 @@ export const AuthPage: React.FC = () => {
   const handleGoogleSignIn = async () => {
     if (!isSupabaseConnected || !supabase) {
       setMessage({
-        text: 'Authentication service is not configured. Please contact the administrator.',
+        text: 'Google Sign-in requires Supabase connection. Please connect your Supabase database above or sign in with email.',
         isError: true,
       });
       return;
@@ -205,16 +257,55 @@ export const AuthPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Not configured warning */}
+        {/* Supabase Status / Connect Drawer */}
         {!isSupabaseConnected && (
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-            <ServerOff className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Database Not Configured</p>
-              <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
-                Authentication is unavailable. Please contact the administrator to configure the backend.
-              </p>
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2.5">
+                <Database className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-amber-700 dark:text-amber-400">
+                    Running in Local Mode (0 Balance)
+                  </p>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-0.5">
+                    You can register and sign in right now. Connect Supabase anytime for cloud PostgreSQL sync.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDbConfig(!showDbConfig)}
+                className="text-amber-600 dark:text-amber-400 font-bold hover:underline flex items-center gap-0.5 flex-shrink-0 text-[11px]"
+              >
+                <span>Connect</span>
+                {showDbConfig ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
             </div>
+
+            {showDbConfig && (
+              <form onSubmit={handleConnectSupabase} className="pt-2 border-t border-amber-500/20 space-y-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="Supabase Project URL (https://xxxx.supabase.co)"
+                  value={inputSbUrl}
+                  onChange={(e) => setInputSbUrl(e.target.value)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-[11px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
+                />
+                <input
+                  type="password"
+                  required
+                  placeholder="Supabase Anon Public API Key"
+                  value={inputSbKey}
+                  onChange={(e) => setInputSbKey(e.target.value)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-[11px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
+                />
+                <Button type="submit" size="sm" variant="primary" className="w-full text-xs font-bold">
+                  {dbSaveSuccess ? 'Saved! Connecting...' : 'Connect & Save'}
+                </Button>
+              </form>
+            )}
           </div>
         )}
 
@@ -226,10 +317,11 @@ export const AuthPage: React.FC = () => {
                 setMode('login');
                 setMessage(null);
               }}
-              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${mode === 'login'
+              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${
+                mode === 'login'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
+              }`}
             >
               Sign In
             </button>
@@ -238,10 +330,11 @@ export const AuthPage: React.FC = () => {
                 setMode('register');
                 setMessage(null);
               }}
-              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${mode === 'register'
+              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${
+                mode === 'register'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
+              }`}
             >
               Create Account
             </button>
@@ -250,23 +343,24 @@ export const AuthPage: React.FC = () => {
                 setMode('forgot');
                 setMessage(null);
               }}
-              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${mode === 'forgot'
+              className={`flex-1 pb-3 text-xs font-bold transition-colors border-b-2 ${
+                mode === 'forgot'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
+              }`}
             >
               Reset
             </button>
           </div>
 
           {/* Social Google Login Button */}
-          {mode !== 'forgot' && (
+          {mode !== 'forgot' && isSupabaseConnected && (
             <div className="space-y-4 mb-6">
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
-                disabled={loading || !isSupabaseConnected}
-                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all shadow-sm"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -302,10 +396,11 @@ export const AuthPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {message && (
               <div
-                className={`p-3 rounded-xl text-xs flex items-center gap-2 ${message.isError
+                className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                  message.isError
                     ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
                     : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                  }`}
+                }`}
               >
                 {message.isError ? (
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -461,8 +556,8 @@ export const AuthPage: React.FC = () => {
             <Button
               type="submit"
               variant="primary"
-              className="w-full justify-center gap-2 mt-2"
-              disabled={loading || !isSupabaseConnected}
+              className="w-full justify-center gap-2 mt-2 font-bold"
+              disabled={loading}
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
